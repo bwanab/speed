@@ -1,5 +1,6 @@
 import Keyboard
 import Window
+import Random
 
 
 type V = {x : Float, y : Float , z : Float}
@@ -11,25 +12,40 @@ m = {position = {x = 0, y = 0, z = 0}, speed = {x = 0, y = 0, z = 0}, accel = {x
 addV : V -> V -> V
 addV v1 v2 = {x = v1.x + v2.x, y = v1.y + v2.y, z = v1.z + v2.z }
 
+addBuffeting : Float -> Float -> Float -> Float
+addBuffeting val rand speed = val + speed * (rand - 0.5)
+
+testBuffet : Float -> Bool
+testBuffet r = 0 == ((round (r * 100)) `mod` 2)
+
 -- Update
-update : (Time, {x: Int, y: Int}, Bool, Bool) -> State -> State
-update (t, {x,y}, forward, brake) state =
+update : (Time, {x: Int, y: Int}, Bool, Bool, Float) -> State -> State
+update (t, {x,y}, forward, brake, rand) state =
    let
         newForward = if forward then 1 else 0
         newBrake = if brake then -1 else 0
         newAccel : V
         newAccel = {x = toFloat x, y = toFloat y, z = newForward + newBrake}
         newSpeed = addV newAccel state.speed
-        newPosition = addV state.position newSpeed
+        tPosition = addV state.position newSpeed
+        tB = testBuffet rand
+        newPosition = {tPosition | x <- if tB then addBuffeting tPosition.x rand newSpeed.z else tPosition.x,
+                                   y <- if not tB then addBuffeting tPosition.y rand newSpeed.z else tPosition.y }
    in
         {state | speed <- newSpeed, position <- newPosition, accel <- newAccel }
 
+format1 : String -> Float -> String
+format1 s v = s ++ ": " ++ show (round v) ++ " "
+
+formatV : V -> String
+formatV {x,y,z} = format1 "x" x ++ format1 "y" y ++ format1 "z" z
+
 showV : String -> V -> Element
-showV label score =
+showV label v =
     let
         g = group [rect 200 50 |> filled lightGrey,
                    toForm (flow down [plainText label,
-                                      show score |> toText |> rightAligned])]
+                                      formatV v |> toText |> rightAligned])]
     in
           collage 200 50 [g]
 
@@ -41,12 +57,14 @@ render : (Int, Int) -> State -> Element
 render (w,h) m = container w h middle (flow down [flow right [showV "Position" m.position,
                                                               showV "Speed" m.speed,
                                                               showV "Accel" m.accel],
-                                                 display w h m])
+                                                 display w (h - 50) m])
 input =
-  lift4 (,,,)
+  lift5 (,,,,)
         (foldp (\t acc -> acc + (t/100)) 0 (fps 24))
         Keyboard.arrows
         Keyboard.space
         Keyboard.ctrl
+        (Random.float (fps 24))
+
 -- Main
 main = lift2 render Window.dimensions <| foldp update m input
